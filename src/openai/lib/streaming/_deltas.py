@@ -59,10 +59,12 @@ def accumulate_delta(acc: dict[object, object], delta: dict[object, object]) -> 
                 if not isinstance(index, int):
                     raise TypeError(f"Unexpected, list delta entry `index` value is not an integer; {index}")
 
-                try:
-                    acc_entry = acc_value[index]
-                except IndexError:
-                    acc_value.insert(index, delta_entry)
+                while len(acc_value) <= index:
+                    acc_value.append(None)
+
+                acc_entry = acc_value[index]
+                if acc_entry is None:
+                    acc_value[index] = delta_entry
                 else:
                     if not is_dict(acc_entry):
                         raise TypeError("not handled yet")

@@ -30,6 +30,40 @@ def test_duplicate_indexes_in_initial_list(initial: dict[object, object]) -> Non
     ]
 
 
+def test_out_of_order_tool_call_indexes() -> None:
+    acc: dict[object, object] = {}
+    accumulate_delta(
+        acc,
+        {
+            "tool_calls": [
+                {"index": 1, "id": "call_1", "type": "function", "function": {"name": "func_1", "arguments": '{"b": 2}'}}
+            ]
+        },
+    )
+    accumulate_delta(
+        acc,
+        {
+            "tool_calls": [
+                {"index": 0, "id": "call_0", "type": "function", "function": {"name": "func_0", "arguments": '{"a": 1}'}}
+            ]
+        },
+    )
+    assert acc["tool_calls"] == [
+        {
+            "index": 0,
+            "id": "call_0",
+            "type": "function",
+            "function": {"name": "func_0", "arguments": '{"a": 1}'},
+        },
+        {
+            "index": 1,
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "func_1", "arguments": '{"b": 2}'},
+        },
+    ]
+
+
 @pytest.mark.parametrize(
     "initial,delta,expected",
     [
