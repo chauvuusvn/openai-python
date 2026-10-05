@@ -64,6 +64,34 @@ def test_out_of_order_tool_call_indexes() -> None:
     ]
 
 
+def test_sparse_tool_call_indexes() -> None:
+    acc: dict[object, object] = {}
+    accumulate_delta(
+        acc,
+        {
+            "tool_calls": [
+                {"index": 7, "id": "call_7", "type": "function", "function": {"name": "func_7", "arguments": '{"x":'}}
+            ]
+        },
+    )
+    accumulate_delta(
+        acc,
+        {
+            "tool_calls": [
+                {"index": 7, "function": {"arguments": ' 10}'}}
+            ]
+        },
+    )
+    assert acc["tool_calls"] == [
+        {
+            "index": 7,
+            "id": "call_7",
+            "type": "function",
+            "function": {"name": "func_7", "arguments": '{"x": 10}'},
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     "initial,delta,expected",
     [

@@ -59,17 +59,31 @@ def accumulate_delta(acc: dict[object, object], delta: dict[object, object]) -> 
                 if not isinstance(index, int):
                     raise TypeError(f"Unexpected, list delta entry `index` value is not an integer; {index}")
 
-                while len(acc_value) <= index:
-                    acc_value.append(None)
+                match_idx: int | None = None
+                for i, existing in enumerate(acc_value):
+                    if is_dict(existing):
+                        if existing.get("index") == index:
+                            match_idx = i
+                            break
+                        if "index" not in existing and i == index:
+                            match_idx = i
+                            break
 
-                acc_entry = acc_value[index]
-                if acc_entry is None:
-                    acc_value[index] = delta_entry
+                if match_idx is None:
+                    insert_pos = len(acc_value)
+                    for i, existing in enumerate(acc_value):
+                        if is_dict(existing):
+                            existing_idx = existing.get("index")
+                            if isinstance(existing_idx, int) and existing_idx > index:
+                                insert_pos = i
+                                break
+                    acc_value.insert(insert_pos, delta_entry)
                 else:
+                    acc_entry = acc_value[match_idx]
                     if not is_dict(acc_entry):
                         raise TypeError("not handled yet")
 
-                    acc_value[index] = accumulate_delta(acc_entry, delta_entry)
+                    acc_value[match_idx] = accumulate_delta(acc_entry, delta_entry)
 
         acc[key] = acc_value
 
