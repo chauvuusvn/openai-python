@@ -446,7 +446,16 @@ class ChatCompletionStreamState(Generic[ResponseFormatT]):
                 )
 
             for tool_call_chunk in choice.delta.tool_calls or []:
-                tool_call_snapshot = (choice_snapshot.message.tool_calls or [])[tool_call_chunk.index]
+                tool_calls_list = choice_snapshot.message.tool_calls or []
+                tool_call_snapshot = next(
+                    (tc for tc in tool_calls_list if getattr(tc, "index", None) == tool_call_chunk.index),
+                    None,
+                )
+                if tool_call_snapshot is None and 0 <= tool_call_chunk.index < len(tool_calls_list):
+                    tool_call_snapshot = tool_calls_list[tool_call_chunk.index]
+
+                if tool_call_snapshot is None:
+                    continue
 
                 if tool_call_snapshot.type == "function":
                     input_tool = get_input_tool_by_name(
@@ -536,7 +545,15 @@ class ChatCompletionStreamState(Generic[ResponseFormatT]):
                 assert tool_calls is not None
 
                 for tool_call_delta in choice.delta.tool_calls:
-                    tool_call = tool_calls[tool_call_delta.index]
+                    tool_call = next(
+                        (tc for tc in tool_calls if getattr(tc, "index", None) == tool_call_delta.index),
+                        None,
+                    )
+                    if tool_call is None and 0 <= tool_call_delta.index < len(tool_calls):
+                        tool_call = tool_calls[tool_call_delta.index]
+
+                    if tool_call is None:
+                        continue
 
                     if tool_call.type == "function":
                         assert tool_call_delta.function is not None

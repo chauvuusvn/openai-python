@@ -92,6 +92,82 @@ def test_sparse_tool_call_indexes() -> None:
     ]
 
 
+def test_chat_completion_stream_state_out_of_order_chunks() -> None:
+    from openai import omit
+    from openai.lib.streaming.chat._completions import ChatCompletionStreamState
+    from openai.types.chat.chat_completion_chunk import (
+        Choice,
+        ChoiceDelta,
+        ChoiceDeltaToolCall,
+        ChoiceDeltaToolCallFunction,
+        ChatCompletionChunk,
+    )
+
+    state = ChatCompletionStreamState(response_format=omit, input_tools=omit)
+
+    # Chunk 1: index 1 arrives first
+    state.handle_chunk(
+        ChatCompletionChunk(
+            id="c1",
+            created=100,
+            model="gpt-4o",
+            object="chat.completion.chunk",
+            choices=[
+                Choice(
+                    index=0,
+                    delta=ChoiceDelta(
+                        role="assistant",
+                        tool_calls=[
+                            ChoiceDeltaToolCall(
+                                index=1,
+                                id="call_1",
+                                type="function",
+                                function=ChoiceDeltaToolCallFunction(name="func_1", arguments='{"b": 2}'),
+                            )
+                        ],
+                    ),
+                    finish_reason=None,
+                )
+            ],
+        )
+    )
+
+    # Chunk 2: index 0 arrives second
+    state.handle_chunk(
+        ChatCompletionChunk(
+            id="c2",
+            created=100,
+            model="gpt-4o",
+            object="chat.completion.chunk",
+            choices=[
+                Choice(
+                    index=0,
+                    delta=ChoiceDelta(
+                        tool_calls=[
+                            ChoiceDeltaToolCall(
+                                index=0,
+                                id="call_0",
+                                type="function",
+                                function=ChoiceDeltaToolCallFunction(name="func_0", arguments='{"a": 1}'),
+                            )
+                        ]
+                    ),
+                    finish_reason=None,
+                )
+            ],
+        )
+    )
+
+    snapshot = state.current_completion_snapshot
+    tool_calls = snapshot.choices[0].message.tool_calls
+    assert tool_calls is not None
+    assert len(tool_calls) == 2
+    assert tool_calls[0].id == "call_0"
+    assert tool_calls[0].function.arguments == '{"a": 1}'
+    assert tool_calls[1].id == "call_1"
+    assert tool_calls[1].function.arguments == '{"b": 2}'
+
+
 @pytest.mark.parametrize(
     "initial,delta,expected",
     [
