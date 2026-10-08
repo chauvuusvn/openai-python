@@ -75,3 +75,34 @@ def test_existing_delta_semantics(
 def test_invalid_indexed_delta(entry: object, error: type[Exception], match: str) -> None:
     with pytest.raises(error, match=match):
         accumulate_delta({"content": [{"index": 0, "text": "a"}]}, {"content": [entry]})
+
+
+def test_out_of_order_indexed_delta_accumulation() -> None:
+    acc: dict[object, object] = {}
+    chunk_index_1: dict[object, object] = {
+        "tool_calls": [
+            {"index": 1, "id": "call_1", "type": "function", "function": {"name": "func_one", "arguments": '{"a": 1}'}}
+        ]
+    }
+    chunk_index_0: dict[object, object] = {
+        "tool_calls": [
+            {"index": 0, "id": "call_0", "type": "function", "function": {"name": "func_zero", "arguments": '{"b": 2}'}}
+        ]
+    }
+    accumulate_delta(acc, chunk_index_1)
+    accumulate_delta(acc, chunk_index_0)
+
+    assert acc["tool_calls"] == [
+        {
+            "index": 0,
+            "id": "call_0",
+            "type": "function",
+            "function": {"name": "func_zero", "arguments": '{"b": 2}'},
+        },
+        {
+            "index": 1,
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "func_one", "arguments": '{"a": 1}'},
+        },
+    ]
