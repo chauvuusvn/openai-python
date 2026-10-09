@@ -1229,3 +1229,141 @@ def _make_raw_stream_snapshot_request(
 
     if live:
         client.close()
+
+
+def test_stream_out_of_order_and_sparse_tool_call_chunks() -> None:
+    from openai.types.chat.chat_completion_chunk import (
+        Choice as ChunkChoice,
+        ChoiceDelta,
+        ChoiceDeltaToolCall,
+        ChoiceDeltaToolCallFunction,
+    )
+
+    state = ChatCompletionStreamState(response_format=None, input_tools=[])
+
+    chunks = [
+        ChatCompletionChunk(
+            id="chunk_1",
+            choices=[
+                ChunkChoice(
+                    index=0,
+                    delta=ChoiceDelta(
+                        tool_calls=[
+                            ChoiceDeltaToolCall(
+                                index=1,
+                                id="call_1",
+                                type="function",
+                                function=ChoiceDeltaToolCallFunction(name="func_one", arguments='{"a":'),
+                            )
+                        ]
+                    ),
+                )
+            ],
+            created=1000,
+            model="gpt-4o",
+            object="chat.completion.chunk",
+        ),
+        ChatCompletionChunk(
+            id="chunk_2",
+            choices=[
+                ChunkChoice(
+                    index=0,
+                    delta=ChoiceDelta(
+                        tool_calls=[
+                            ChoiceDeltaToolCall(
+                                index=0,
+                                id="call_0",
+                                type="function",
+                                function=ChoiceDeltaToolCallFunction(name="func_zero", arguments='{"b": 2}'),
+                            )
+                        ]
+                    ),
+                )
+            ],
+            created=1001,
+            model="gpt-4o",
+            object="chat.completion.chunk",
+        ),
+        ChatCompletionChunk(
+            id="chunk_3",
+            choices=[
+                ChunkChoice(
+                    index=0,
+                    delta=ChoiceDelta(
+                        tool_calls=[
+                            ChoiceDeltaToolCall(
+                                index=1,
+                                function=ChoiceDeltaToolCallFunction(arguments=' 1}'),
+                            )
+                        ]
+                    ),
+                )
+            ],
+            created=1002,
+            model="gpt-4o",
+            object="chat.completion.chunk",
+        ),
+        ChatCompletionChunk(
+            id="chunk_4",
+            choices=[
+                ChunkChoice(
+                    index=0,
+                    delta=ChoiceDelta(
+                        tool_calls=[
+                            ChoiceDeltaToolCall(
+                                index=7,
+                                id="call_7",
+                                type="function",
+                                function=ChoiceDeltaToolCallFunction(name="func_seven", arguments='{"c": 7}'),
+                            )
+                        ]
+                    ),
+                )
+            ],
+            created=1003,
+            model="gpt-4o",
+            object="chat.completion.chunk",
+        ),
+        ChatCompletionChunk(
+            id="chunk_5",
+            choices=[
+                ChunkChoice(
+                    index=0,
+                    delta=ChoiceDelta(),
+                    finish_reason="tool_calls",
+                )
+            ],
+            created=1004,
+            model="gpt-4o",
+            object="chat.completion.chunk",
+        ),
+    ]
+
+    all_events: list[ChatCompletionStreamEvent[object]] = []
+    for chunk in chunks:
+        events = list(state.handle_chunk(chunk))
+        all_events.extend(events)
+
+    snapshot = state.current_completion_snapshot
+    assert snapshot is not None
+    assert len(snapshot.choices) == 1
+    tool_calls = snapshot.choices[0].message.tool_calls
+    assert tool_calls is not None
+    assert len(tool_calls) == 3
+
+    # Verify calls resolved in sorted logical order with exact IDs and intact arguments
+    assert tool_calls[0].id == "call_0"
+    assert tool_calls[0].function.name == "func_zero"
+    assert tool_calls[0].function.arguments == '{"b": 2}'
+
+    assert tool_calls[1].id == "call_1"
+    assert tool_calls[1].function.name == "func_one"
+    assert tool_calls[1].function.arguments == '{"a": 1}'
+
+    assert tool_calls[2].id == "call_7"
+    assert tool_calls[2].function.name == "func_seven"
+    assert tool_calls[2].function.arguments == '{"c": 7}'
+
+    # Verify event indexes
+    arg_delta_events = [e for e in all_events if e.type == "tool_calls.function.arguments.delta"]
+    assert [e.index for e in arg_delta_events] == [1, 0, 1, 7]
