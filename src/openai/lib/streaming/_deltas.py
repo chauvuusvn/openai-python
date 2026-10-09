@@ -1,10 +1,39 @@
 from __future__ import annotations
 
+from typing import TypeVar, Sequence
 from ..._utils import is_dict, is_list
+
+_T = TypeVar("_T")
 
 
 def _has_indexed_entries(value: object) -> bool:
     return is_list(value) and any(is_dict(entry) and "index" in entry for entry in value)
+
+
+def find_indexed_entry(
+    entries: Sequence[_T] | None,
+    logical_index: int,
+    entry_id: str | None = None,
+) -> _T | None:
+    """Safely find an entry in an accumulated sequence by logical index or ID,
+    falling back to positional access without raising IndexError."""
+    if not entries:
+        return None
+
+    if entry_id:
+        for entry in entries:
+            if getattr(entry, "id", None) == entry_id:
+                return entry
+
+    for entry in entries:
+        idx = getattr(entry, "index", None)
+        if idx == logical_index:
+            return entry
+
+    if logical_index < len(entries):
+        return entries[logical_index]
+
+    return entries[-1] if entries else None
 
 
 def accumulate_delta(acc: dict[object, object], delta: dict[object, object]) -> dict[object, object]:

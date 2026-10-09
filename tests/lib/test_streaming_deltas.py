@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from openai.lib.streaming._deltas import accumulate_delta
+from openai.lib.streaming._deltas import accumulate_delta, find_indexed_entry
 
 
 @pytest.mark.parametrize("initial", [{}, {"tool_calls": None}, {"tool_calls": []}])
@@ -133,4 +133,34 @@ def test_sparse_indexed_delta_accumulation_no_placeholder() -> None:
         "type": "function",
         "function": {"name": "func_sparse", "arguments": '{"val": 7}, "extra": true}'},
     }
+
+
+def test_large_sparse_indexed_delta_no_memory_bloat() -> None:
+    acc: dict[object, object] = {}
+    chunk_large: dict[object, object] = {
+        "tool_calls": [
+            {"index": 100000, "id": "call_large", "type": "function", "function": {"name": "func_large", "arguments": '{"k": 1}'}}
+        ]
+    }
+    accumulate_delta(acc, chunk_large)
+    tool_calls = cast("list[dict[str, object]]", acc["tool_calls"])
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["index"] == 100000
+
+
+def test_find_indexed_entry_helper() -> None:
+    class DummyCall:
+        def __init__(self, id: str | None, index: int | None) -> None:
+            self.id = id
+            self.index = index
+
+    item0 = DummyCall(id="call_0", index=0)
+    item7 = DummyCall(id="call_7", index=7)
+    calls = [item0, item7]
+
+    assert find_indexed_entry(calls, 0) is item0
+    assert find_indexed_entry(calls, 7) is item7
+    assert find_indexed_entry(calls, 999, entry_id="call_7") is item7
+    assert find_indexed_entry(None, 0) is None
+    assert find_indexed_entry([], 0) is None
 

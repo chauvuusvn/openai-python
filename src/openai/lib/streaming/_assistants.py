@@ -5,7 +5,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, Callable, Iterable, Iterator, cast
 from typing_extensions import Awaitable, AsyncIterable, AsyncIterator, assert_never
 
-from ._deltas import accumulate_delta as accumulate_delta
+from ._deltas import accumulate_delta as accumulate_delta, find_indexed_entry
 from ..._utils import consume_sync_iterator, consume_async_iterator
 from ..._compat import model_dump
 from ..._httpx2 import request_exceptions, timeout_exceptions
@@ -377,10 +377,18 @@ class AssistantEventHandler:
             ):
                 assert step_snapshot.step_details.type == "tool_calls"
                 for tool_call_delta in run_step_delta.step_details.tool_calls:
+                    tool_call = find_indexed_entry(
+                        step_snapshot.step_details.tool_calls,
+                        tool_call_delta.index,
+                        getattr(tool_call_delta, "id", None),
+                    )
+                    if tool_call is None:
+                        continue
+
                     if tool_call_delta.index == self._current_tool_call_index:
                         self.on_tool_call_delta(
                             tool_call_delta,
-                            step_snapshot.step_details.tool_calls[tool_call_delta.index],
+                            tool_call,
                         )
 
                     # If the delta is for a new tool call:
@@ -391,11 +399,11 @@ class AssistantEventHandler:
                             self.on_tool_call_done(self._current_tool_call)
 
                         self._current_tool_call_index = tool_call_delta.index
-                        self._current_tool_call = step_snapshot.step_details.tool_calls[tool_call_delta.index]
+                        self._current_tool_call = tool_call
                         self.on_tool_call_created(self._current_tool_call)
 
                     # Update the current_tool_call (delta event is correctly emitted already)
-                    self._current_tool_call = step_snapshot.step_details.tool_calls[tool_call_delta.index]
+                    self._current_tool_call = tool_call
 
             self.on_run_step_delta(
                 event.data.delta,
@@ -809,10 +817,18 @@ class AsyncAssistantEventHandler:
             ):
                 assert step_snapshot.step_details.type == "tool_calls"
                 for tool_call_delta in run_step_delta.step_details.tool_calls:
+                    tool_call = find_indexed_entry(
+                        step_snapshot.step_details.tool_calls,
+                        tool_call_delta.index,
+                        getattr(tool_call_delta, "id", None),
+                    )
+                    if tool_call is None:
+                        continue
+
                     if tool_call_delta.index == self._current_tool_call_index:
                         await self.on_tool_call_delta(
                             tool_call_delta,
-                            step_snapshot.step_details.tool_calls[tool_call_delta.index],
+                            tool_call,
                         )
 
                     # If the delta is for a new tool call:
@@ -823,11 +839,11 @@ class AsyncAssistantEventHandler:
                             await self.on_tool_call_done(self._current_tool_call)
 
                         self._current_tool_call_index = tool_call_delta.index
-                        self._current_tool_call = step_snapshot.step_details.tool_calls[tool_call_delta.index]
+                        self._current_tool_call = tool_call
                         await self.on_tool_call_created(self._current_tool_call)
 
                     # Update the current_tool_call (delta event is correctly emitted already)
-                    self._current_tool_call = step_snapshot.step_details.tool_calls[tool_call_delta.index]
+                    self._current_tool_call = tool_call
 
             await self.on_run_step_delta(
                 event.data.delta,

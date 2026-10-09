@@ -22,7 +22,7 @@ from ._events import (
     FunctionToolCallArgumentsDoneEvent,
     FunctionToolCallArgumentsDeltaEvent,
 )
-from .._deltas import accumulate_delta
+from .._deltas import accumulate_delta, find_indexed_entry
 from ...._types import Omit, IncEx, omit
 from ...._utils import is_given, consume_sync_iterator, consume_async_iterator
 from ...._compat import model_dump
@@ -401,7 +401,11 @@ class ChatCompletionStreamState(Generic[ResponseFormatT]):
                 # ensure tools that have already been parsed are added back into the newly
                 # constructed message snapshot
                 for tool_index, prev_tool in enumerate(previous_tool_calls):
-                    new_tool = (choice_snapshot.message.tool_calls or [])[tool_index]
+                    new_tool = find_indexed_entry(
+                        choice_snapshot.message.tool_calls, tool_index, getattr(prev_tool, "id", None)
+                    )
+                    if new_tool is None:
+                        continue
 
                     if prev_tool.type == "function":
                         assert new_tool.type == "function"
@@ -446,7 +450,13 @@ class ChatCompletionStreamState(Generic[ResponseFormatT]):
                 )
 
             for tool_call_chunk in choice.delta.tool_calls or []:
-                tool_call_snapshot = (choice_snapshot.message.tool_calls or [])[tool_call_chunk.index]
+                tool_call_snapshot = find_indexed_entry(
+                    choice_snapshot.message.tool_calls,
+                    tool_call_chunk.index,
+                    getattr(tool_call_chunk, "id", None),
+                )
+                if tool_call_snapshot is None:
+                    continue
 
                 if tool_call_snapshot.type == "function":
                     input_tool = get_input_tool_by_name(
@@ -536,7 +546,13 @@ class ChatCompletionStreamState(Generic[ResponseFormatT]):
                 assert tool_calls is not None
 
                 for tool_call_delta in choice.delta.tool_calls:
-                    tool_call = tool_calls[tool_call_delta.index]
+                    tool_call = find_indexed_entry(
+                        tool_calls,
+                        tool_call_delta.index,
+                        getattr(tool_call_delta, "id", None),
+                    )
+                    if tool_call is None:
+                        continue
 
                     if tool_call.type == "function":
                         assert tool_call_delta.function is not None
@@ -715,7 +731,9 @@ class ChoiceEventState:
         self._done_tool_calls.add(tool_index)
 
         assert choice_snapshot.message.tool_calls is not None
-        tool_call_snapshot = choice_snapshot.message.tool_calls[tool_index]
+        tool_call_snapshot = find_indexed_entry(choice_snapshot.message.tool_calls, tool_index)
+        if tool_call_snapshot is None:
+            return
 
         if tool_call_snapshot.type == "function":
             parsed_arguments = parse_function_tool_arguments(
