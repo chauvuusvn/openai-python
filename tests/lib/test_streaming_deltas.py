@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import cast
 
 import pytest
 
@@ -106,3 +107,30 @@ def test_out_of_order_indexed_delta_accumulation() -> None:
             "function": {"name": "func_one", "arguments": '{"a": 1}'},
         },
     ]
+
+
+def test_sparse_indexed_delta_accumulation_no_placeholder() -> None:
+    acc: dict[object, object] = {}
+    chunk_sparse: dict[object, object] = {
+        "tool_calls": [
+            {"index": 7, "id": "call_7", "type": "function", "function": {"name": "func_sparse", "arguments": '{"val": 7}'}}
+        ]
+    }
+    chunk_sparse_delta: dict[object, object] = {
+        "tool_calls": [
+            {"index": 7, "function": {"arguments": ', "extra": true}'}}
+        ]
+    }
+    accumulate_delta(acc, chunk_sparse)
+    accumulate_delta(acc, chunk_sparse_delta)
+
+    # Must allocate only 1 entry for sparse index 7 without filling placeholder slots
+    tool_calls = cast("list[dict[str, object]]", acc["tool_calls"])
+    assert len(tool_calls) == 1
+    assert tool_calls[0] == {
+        "index": 7,
+        "id": "call_7",
+        "type": "function",
+        "function": {"name": "func_sparse", "arguments": '{"val": 7}, "extra": true}'},
+    }
+
