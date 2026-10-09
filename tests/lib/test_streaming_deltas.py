@@ -164,3 +164,22 @@ def test_find_indexed_entry_helper() -> None:
     assert find_indexed_entry(None, 0) is None
     assert find_indexed_entry([], 0) is None
 
+    # (1) Unknown index with existing entries returns None without falling back to last item
+    assert find_indexed_entry(calls, 5) is None
+    assert find_indexed_entry(calls, 99) is None
+
+    # (2) ID and index lookups over mapping-shaped dictionary entries
+    dict_calls = [
+        {"id": "call_d0", "index": 0, "name": "fn0"},
+        {"id": "call_d1", "index": 1, "name": "fn1"},
+    ]
+    assert find_indexed_entry(dict_calls, 1) == {"id": "call_d1", "index": 1, "name": "fn1"}
+    assert find_indexed_entry(dict_calls, 999, entry_id="call_d0") == {"id": "call_d0", "index": 0, "name": "fn0"}
+    assert find_indexed_entry(dict_calls, 42) is None
+
+    # (3) Legacy unindexed snapshots allow bounded positional fallback
+    legacy_calls = [DummyCall(id=None, index=None), DummyCall(id=None, index=None)]
+    assert find_indexed_entry(legacy_calls, 0) is legacy_calls[0]
+    assert find_indexed_entry(legacy_calls, 1) is legacy_calls[1]
+    assert find_indexed_entry(legacy_calls, 2) is None
+

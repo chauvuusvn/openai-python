@@ -10,30 +10,45 @@ def _has_indexed_entries(value: object) -> bool:
     return is_list(value) and any(is_dict(entry) and "index" in entry for entry in value)
 
 
+def _get_entry_attr(entry: object, key: str) -> object | None:
+    if is_dict(entry):
+        return entry.get(key)
+    return getattr(entry, key, None)
+
+
 def find_indexed_entry(
     entries: Sequence[_T] | None,
     logical_index: int,
     entry_id: str | None = None,
 ) -> _T | None:
-    """Safely find an entry in an accumulated sequence by logical index or ID,
-    falling back to positional access without raising IndexError."""
+    """Safely find an entry in an accumulated sequence by logical index or ID.
+
+    For indexed entries, returns None if unmatched to prevent cross-call corruption.
+    Preserves positional access only for legacy unindexed snapshots.
+    """
     if not entries:
         return None
 
+    # 1. Match by explicit entry ID (supports both models and mappings)
     if entry_id:
         for entry in entries:
-            if getattr(entry, "id", None) == entry_id:
+            if _get_entry_attr(entry, "id") == entry_id:
                 return entry
 
+    # 2. Match by explicit logical index
+    has_explicit_indices = False
     for entry in entries:
-        idx = getattr(entry, "index", None)
-        if idx == logical_index:
-            return entry
+        idx = _get_entry_attr(entry, "index")
+        if idx is not None:
+            has_explicit_indices = True
+            if idx == logical_index:
+                return entry
 
-    if logical_index < len(entries):
+    # 3. Positional fallback strictly for legacy unindexed snapshots
+    if not has_explicit_indices and 0 <= logical_index < len(entries):
         return entries[logical_index]
 
-    return entries[-1] if entries else None
+    return None
 
 
 def accumulate_delta(acc: dict[object, object], delta: dict[object, object]) -> dict[object, object]:
